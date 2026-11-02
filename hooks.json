@@ -1,0 +1,13 @@
+{
+  "architecture-approval-guard": {
+    "enabled": true,
+    "PreToolUse": [{
+      "matcher": "run_command|.*(edit|write|create|delete|move|rename|patch|apply|replace|insert).*|mcp:.*",
+      "hooks": [{
+        "type": "command",
+        "command": "node ./scripts/approval-gate.mjs",
+        "timeout": 5
+      }]
+    }]
+  }
+}
