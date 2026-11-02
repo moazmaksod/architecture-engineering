@@ -1,0 +1,13 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "architecture-engineering",
+  "displayName": "Architecture Engineering",
+  "version": "0.1.0",
+  "description": "A reusable architecture discovery, design, implementation and independent review system for software repositories.",
+  "suggestedPrompts": [
+    "Run a read-only architecture discovery on this project.",
+    "Plan an architecture improvement and wait for my approval before implementation.",
+    "Independently review the current implementation against its approved architecture plan."
+  ],
+  "keywords": ["architecture", "codebase", "engineering", "review", "refactoring", "performance"]
+}
