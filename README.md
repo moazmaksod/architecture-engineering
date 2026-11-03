@@ -2,7 +2,7 @@
 
 An execution-first Antigravity plugin for evidence-based architecture discovery, engineering implementation, testing, independent review, and autonomous safety enforcement.
 
-**Status:** Version 0.2.0 (Execution-First Architecture)
+**Status:** Version 0.3.0 (Autonomous Read & Discovery, Human-Controlled Writes)
 
 ---
 

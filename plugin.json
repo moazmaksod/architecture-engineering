@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "architecture-engineering",
   "displayName": "Architecture Engineering",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A reusable architecture discovery, design, implementation and independent review system for software repositories.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [
