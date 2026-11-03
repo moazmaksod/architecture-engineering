@@ -173,8 +173,49 @@ node --test tests/*.test.mjs
 
 ### Test Suites Included:
 - **`tests/approval-gate.test.mjs`:** 24 unit tests verifying the approval gate's fail-closed architecture, bypass prevention, CLI flag handling, and false-positive reduction.
+- **`tests/updater.test.mjs`:** 11 unit and integration tests verifying the self-update system, including semver comparison, zip-slip defense, backup/rollback, junction detection, and dev workspace protection.
 - **`tests/execution-acceptance.test.mjs`:** Acceptance tests verifying execution lifecycle math and boundary handling.
 - **`tests/order_processor.test.mjs`:** Domain verification suite ensuring zero floating-point drift and proper exception handling.
+
+---
+
+## Self-Update System (`scripts/updater.mjs`)
+
+Architecture Engineering includes a user-controlled, secure self-update system that checks official GitHub releases and updates the installed plugin with explicit approval.
+
+### Supported Commands & Skills
+- **`/architecture-check-update`**: Checks whether a new official GitHub release exists without modifying any files.
+  ```powershell
+  node ./scripts/updater.mjs check
+  ```
+- **`/architecture-update`**: Checks for updates, presents release notes, asks for user approval, backs up the installation, and safely applies verified files.
+  ```powershell
+  node ./scripts/updater.mjs update --yes
+  ```
+- **Rollback**: Restores the previous version from the automated backup if needed.
+  ```powershell
+  node ./scripts/updater.mjs rollback
+  ```
+
+### Safety & Integrity Guarantees
+- **Official GitHub Releases Only**: Queries `https://github.com/moazmaksod/architecture-engineering` for stable versioned releases.
+- **User Confirmation**: Never silently updates files. Requires explicit approval.
+- **Pre-Extraction Defense**: Validates archives against path traversal (`..` or absolute paths) before unpacking.
+- **Staging & Validation**: Unpacks into an isolated temporary directory and validates required components (`plugin.json`, `rules/`, `agents/`, `skills/`, `hooks.json`) before touching the installed plugin.
+- **Automatic Backup & Rollback**: Creates a timestamped backup prior to installation. Automatically restores the backup if post-install verification fails.
+- **Workspace Protection**: Protects the active development repository from accidental overwrites.
+- **Junction & Symlink Safety**: Detects Windows junctions and refuses destructive changes unless explicitly permitted.
+
+---
+
+## Maintainer Release Checklist
+
+To publish an official update to GitHub:
+1. Update `version` in `plugin.json` (e.g. `0.3.0`).
+2. Run test suite: `node --test tests/*.test.mjs`.
+3. Commit and push to `main`: `git commit -am "chore: release v0.3.0"` and `git push origin main`.
+4. Create a tagged GitHub Release on `https://github.com/moazmaksod/architecture-engineering/releases` with tag `v0.3.0` and attach release notes.
+5. Users can now run `/architecture-update` or `/architecture-check-update`.
 
 ---
 
