@@ -2,8 +2,17 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "architecture-engineering",
   "displayName": "Architecture Engineering",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "A reusable architecture discovery, design, implementation and independent review system for software repositories.",
+  "author": {
+    "name": "Moaz Maksod",
+    "url": "https://github.com/moazmaksod"
+  },
+  "homepage": "https://github.com/moazmaksod/architecture-engineering",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moazmaksod/architecture-engineering"
+  },
   "logo": "assets/logo.svg",
   "suggestedPrompts": [
     "Run a read-only architecture discovery on this project.",
@@ -12,10 +21,10 @@
   ],
   "keywords": [
     "architecture",
-    "codebase",
-    "engineering",
-    "review",
-    "refactoring",
-    "performance"
+    "antigravity",
+    "code-review",
+    "system-design",
+    "skills",
+    "ai-agents"
   ]
 }

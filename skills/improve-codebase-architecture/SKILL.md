@@ -1,11 +1,15 @@
 ---
 name: improve-codebase-architecture
 description: Surface architectural friction and deepening opportunities by exploring shallow modules, coupling, locality, interfaces, and test seams. Use for architecture health checks and before structural refactoring.
+# Upstream Foundation Attribution:
+# Adapted from Matt Pocock's improve-codebase-architecture skill.
+# Upstream Repository: https://github.com/mattpocock/skills
+# Copyright (c) 2026 Matt Pocock (MIT License). See NOTICE.md for full details.
 ---
 
 # Improve Codebase Architecture
 
-Adapted for Antigravity from Matt Pocock's `improve-codebase-architecture` skill (MIT-licensed; see THIRD_PARTY_NOTICES.md).
+> **Attribution:** Adapted for Antigravity from Matt Pocock's upstream `improve-codebase-architecture` skill ([github.com/mattpocock/skills](https://github.com/mattpocock/skills)), licensed under the MIT License (Copyright (c) 2026 Matt Pocock). See [NOTICE.md](../../NOTICE.md) for full license text and adaptation details.
 
 ## Purpose
 

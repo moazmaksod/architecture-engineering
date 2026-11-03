@@ -1,0 +1,37 @@
+{
+  "name": "architecture-engineering",
+  "version": "1.0.0",
+  "description": "A reusable architecture discovery, design, implementation and independent review system for software repositories.",
+  "type": "module",
+  "main": "scripts/updater.mjs",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check-update": "node ./scripts/updater.mjs check",
+    "update": "node ./scripts/updater.mjs update"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moazmaksod/architecture-engineering.git"
+  },
+  "keywords": [
+    "architecture",
+    "antigravity",
+    "code-review",
+    "system-design",
+    "skills",
+    "ai-agents"
+  ],
+  "author": {
+    "name": "Moaz Maksod",
+    "url": "https://github.com/moazmaksod"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/moazmaksod/architecture-engineering/issues"
+  },
+  "homepage": "https://github.com/moazmaksod/architecture-engineering#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
