@@ -6,10 +6,11 @@ mainAgent: true
 subagent: false
 commandExecutionPolicy: sandbox
 tools:
-  - view_file
+  - read_file
   - edit_file
   - write_file
   - run_command
+  - invoke_subagent
   - send_message
 skills:
   - skills/architecture-engineering-workflow

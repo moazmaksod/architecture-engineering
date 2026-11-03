@@ -19,9 +19,9 @@ Before implementation:
 5. Evaluate correctness, failure behavior, security, performance, compatibility, operability, and rollback.
 6. Compare viable designs and explain trade-offs.
 7. Define acceptance criteria and verification before coding.
-8. Obtain explicit user approval of the exact plan.
+8. In Planning Mode or for breaking architectural changes, obtain explicit user approval. In Execution Mode, proceed autonomously to implementation once acceptance criteria are defined.
 
-Never begin implementation merely because a proposed design seems obvious.
+Never begin implementation without clear acceptance criteria and verification.
 
 ## Universal design principles
 

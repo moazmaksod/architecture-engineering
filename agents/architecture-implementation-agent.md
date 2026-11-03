@@ -6,7 +6,7 @@ mainAgent: false
 subagent: true
 commandExecutionPolicy: sandbox
 tools:
-  - view_file
+  - read_file
   - edit_file
   - write_file
   - run_command

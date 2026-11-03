@@ -38,28 +38,98 @@ function runApprovalGate(input) {
 }
 
 test("Approval Gate Guard Unit Tests", async (t) => {
-  await t.test("returns force_ask for toolCall.name", async () => {
-    const result = await runApprovalGate(JSON.stringify({ toolCall: { name: "edit_file" } }));
-    assert.equal(result.decision, "force_ask");
-    assert.match(result.reason, /Matched action: edit_file/);
+  await t.test("allows routine file edit", async () => {
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "edit_file",
+        args: { Path: "src/calculator.js" }
+      }
+    }));
+    assert.equal(result.decision, "allow");
   });
 
-  await t.test("returns force_ask for tool_name property", async () => {
-    const result = await runApprovalGate(JSON.stringify({ tool_name: "run_command" }));
-    assert.equal(result.decision, "force_ask");
-    assert.match(result.reason, /Matched action: run_command/);
+  await t.test("allows routine command (tests, build, inspect)", async () => {
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "run_command",
+        args: { CommandLine: "npm test" }
+      }
+    }));
+    assert.equal(result.decision, "allow");
   });
 
-  await t.test("handles malformed JSON gracefully", async () => {
+  await t.test("allows git status and git diff inspection", async () => {
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "run_command",
+        args: { CommandLine: "git diff --stat" }
+      }
+    }));
+    assert.equal(result.decision, "allow");
+  });
+
+  await t.test("blocks destructive git commands (reset --hard)", async () => {
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "run_command",
+        args: { CommandLine: "git reset --hard HEAD~1" }
+      }
+    }));
+    assert.equal(result.decision, "force_ask");
+    assert.match(result.reason, /destructive Git operation/i);
+  });
+
+  await t.test("blocks destructive git commands (push)", async () => {
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "run_command",
+        args: { CommandLine: "git push origin main" }
+      }
+    }));
+    assert.equal(result.decision, "force_ask");
+    assert.match(result.reason, /destructive Git operation/i);
+  });
+
+  await t.test("blocks destructive database operations", async () => {
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "run_command",
+        args: { CommandLine: "prisma migrate reset" }
+      }
+    }));
+    assert.equal(result.decision, "force_ask");
+    assert.match(result.reason, /database modification/i);
+  });
+
+  await t.test("blocks destructive filesystem commands", async () => {
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "run_command",
+        args: { CommandLine: "rmdir /s /q temp" }
+      }
+    }));
+    assert.equal(result.decision, "force_ask");
+    assert.match(result.reason, /destructive filesystem operation/i);
+  });
+
+  await t.test("blocks mutation of .git directory", async () => {
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "write_file",
+        args: { Path: "c:/project/.git/config" }
+      }
+    }));
+    assert.equal(result.decision, "force_ask");
+    assert.match(result.reason, /modifying Git internals is forbidden/i);
+  });
+
+  await t.test("handles malformed JSON safely without throwing", async () => {
     const result = await runApprovalGate("not-json");
-    assert.equal(result.decision, "force_ask");
-    assert.match(result.reason, /Matched action: matched tool/);
+    assert.equal(result.decision, "allow");
   });
 
-  await t.test("handles empty payload gracefully", async () => {
+  await t.test("handles empty payload safely without throwing", async () => {
     const result = await runApprovalGate("");
-    assert.equal(result.decision, "force_ask");
-    assert.match(result.reason, /Matched action: matched tool/);
+    assert.equal(result.decision, "allow");
   });
 });
-

@@ -6,10 +6,7 @@ mainAgent: false
 subagent: true
 commandExecutionPolicy: off
 tools:
-  - view_file
-  - grep_search
-  - find_by_name
-  - code_search
+  - read_file
   - send_message
 skills:
   - skills/improve-codebase-architecture

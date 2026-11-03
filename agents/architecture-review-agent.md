@@ -4,12 +4,10 @@ description: Independent quality gate. Inspects diffs, evaluates test evidence, 
 model: inherit
 mainAgent: false
 subagent: true
-commandExecutionPolicy: off
+commandExecutionPolicy: sandbox
 tools:
-  - view_file
-  - grep_search
-  - find_by_name
-  - code_search
+  - read_file
+  - run_command
   - send_message
 skills:
   - skills/architecture-review
