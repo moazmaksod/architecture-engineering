@@ -61,6 +61,11 @@ const commandLine =
 const filePath =
   args.Path ??
   args.path ??
+  args.TargetFile ??
+  args.targetFile ??
+  args.target_file ??
+  args.AbsolutePath ??
+  args.absolutePath ??
   args.filePath ??
   args.file_path ??
   args.file ??
@@ -148,7 +153,7 @@ function isDangerousFilePath(pathStr) {
   }
 
   // Self-protection: hooks.json, approval-gate.mjs, plugin.json
-  if (/(?:^|\/)(?:hooks\.json|scripts\/approval-gate\.mjs|plugin\.json)$/i.test(normalized)) {
+  if (/(?:^|\/)(?:hooks\.json|(?:scripts\/)?approval-gate\.mjs|plugin\.json)$/i.test(normalized)) {
     return "modifying approval guard configuration or script is forbidden: " + pathStr;
   }
 

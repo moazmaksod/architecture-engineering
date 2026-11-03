@@ -318,6 +318,76 @@ test("Approval Gate Guard Unit Tests", async (t) => {
     assert.equal(res2.decision, "force_ask");
   });
 
+  // Dual-naming and Cortex tool payload verification (TargetFile, AbsolutePath)
+  await t.test("blocks mutation of .git via TargetFile in replace_file_content", async () => {
+    const res = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "replace_file_content",
+        args: { TargetFile: ".git/config", ReplacementContent: "hacked" }
+      }
+    }));
+    assert.equal(res.decision, "force_ask");
+    assert.match(res.reason, /modifying Git internals is forbidden/i);
+  });
+
+  await t.test("blocks mutation of approval gate via TargetFile in write_to_file", async () => {
+    const res1 = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "write_to_file",
+        args: { TargetFile: "scripts/approval-gate.mjs", CodeContent: "corrupted" }
+      }
+    }));
+    assert.equal(res1.decision, "force_ask");
+    assert.match(res1.reason, /modifying approval guard configuration or script is forbidden/i);
+
+    const res2 = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "write_to_file",
+        args: { TargetFile: "approval-gate.mjs", CodeContent: "corrupted" }
+      }
+    }));
+    assert.equal(res2.decision, "force_ask");
+  });
+
+  await t.test("blocks mutation of credentials file via AbsolutePath", async () => {
+    const res = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "multi_replace_file_content",
+        args: { AbsolutePath: "/project/.env.local", ReplacementChunks: [] }
+      }
+    }));
+    assert.equal(res.decision, "force_ask");
+    assert.match(res.reason, /modifying environment credentials file/i);
+  });
+
+  await t.test("allows routine file modification via Cortex tools (replace_file_content, write_to_file)", async () => {
+    const res1 = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "replace_file_content",
+        args: { TargetFile: "src/utils.js", ReplacementContent: "new content" }
+      }
+    }));
+    assert.equal(res1.decision, "allow");
+
+    const res2 = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "write_to_file",
+        args: { TargetFile: "src/new_file.js", CodeContent: "export const x = 1;" }
+      }
+    }));
+    assert.equal(res2.decision, "allow");
+  });
+
+  await t.test("allows routine file_change step type", async () => {
+    const res = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "file_change",
+        args: { Path: "src/service.js" }
+      }
+    }));
+    assert.equal(res.decision, "allow");
+  });
+
   // Fail-closed verification
   await t.test("fails closed on malformed JSON payload", async () => {
     const result = await runApprovalGate("not-json");
