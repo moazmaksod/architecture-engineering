@@ -1,104 +1,50 @@
 # Architecture Engineering
 
-A reusable Antigravity plugin for evidence-based architecture discovery, architecture-first engineering, controlled implementation, and independent review.
+An execution-first Antigravity plugin for evidence-based architecture discovery, engineering implementation, testing, and independent review.
 
-**Status:** Experimental, version 0.1.0.
+**Status:** Version 0.2.0 (Execution-First Architecture).
 
 ## What it provides
 
-The plugin is designed to work across software repositories without assuming a language, framework, database, deployment model, or repository layout.
+The plugin carries software engineering tasks from requirements through planning, implementation, testing, review, and delivery. It eliminates analysis paralysis by enforcing autonomous decision-making for routine engineering choices while maintaining rigorous safety boundaries.
 
-It includes four coordinated agent roles:
+### Coordinated Agent Roles
 
-- **Architecture Orchestrator** — coordinates discovery, planning, approval gates, implementation, and review.
-- **Architecture Discovery Agent** — maps the actual system and verifies architectural findings.
-- **Architecture Implementation Agent** — designs solutions and implements only an explicitly approved plan.
-- **Architecture Review Agent** — independently challenges changes and checks for regressions.
+- **Architecture Orchestrator (`architecture-orchestrator`):** Primary agent. Owns the task from intake through delivery. Formulates bounded plans, executes changes (directly or via delegation), coordinates testing and review, and delivers verified results.
+- **Architecture Discovery Agent (`architecture-discovery-agent`):** Action-oriented scout. Maps code boundaries, state owners, and constraints to directly enable implementation.
+- **Architecture Implementation Agent (`architecture-implementation-agent`):** Execution specialist. Modifies source files, resolves technical details, updates automated tests, and verifies changes.
+- **Architecture Review Agent (`architecture-review-agent`):** Independent quality gate. Inspects diffs and test output. Blocks delivery only for genuine blocker or high-severity defects.
 
-It also includes three core skills:
+### The Four Operating Modes
 
-- `improve-codebase-architecture` — discovers architectural friction and deepening opportunities.
-- `high-performance-backend-architecture` — architecture-first engineering across backend, data, networking, concurrency, and security.
-- `architecture-review` — evidence-based independent review.
+1. **Execution Mode (Default):** For implementation requests, features, refactoring, and bug fixes. Carries work all the way through to working code and passing tests.
+2. **Read-Only Review Mode:** For audits, architectural assessments, and security reviews. Zero repository files are modified.
+3. **Planning Mode:** For requests explicitly asking for a design document, RFC, or architecture plan.
+4. **Debugging Mode:** For diagnosing and repairing defect reports with focused regression tests.
 
-## Repository layout
+### Practical Invocation Examples
 
-This repository is the plugin package root:
+#### Implementation Request
+> *"Use architecture-engineering to implement a rate-limiting middleware for our API endpoints, add regression tests, and verify the result. Make routine engineering decisions independently and ask only if genuinely blocked."*
 
-```text
-agents/       Agent definitions
-skills/       Reusable skills
-rules/        Always-on engineering rules
-workflows/    End-to-end workflow and approval state machine
-scripts/      Approval-gate hook implementation
-templates/    Project profile template
-hooks.json    Conservative pre-tool approval hook
-plugin.json   Plugin metadata
-```
+#### Read-Only Audit
+> *"Use architecture-engineering in strict read-only mode to audit our database transaction boundaries and report evidence-based findings without modifying anything."*
 
-Project-specific facts belong in the consuming repository, not in this plugin. The optional project profile template can be copied to `.architecture/PROJECT_PROFILE.md` after read-only discovery and user approval.
+#### Bug Fixing
+> *"Use architecture-engineering in debugging mode to reproduce, fix, and test the null pointer exception in the payment webhook handler. Keep changes focused."*
 
-## Install and validate
+## The 7-Stage Execution Lifecycle
 
-From this repository root:
+1. **Understand:** Map relevant components and constraints.
+2. **Decide:** Resolve routine engineering choices autonomously.
+3. **Plan:** Produce a concise, bounded implementation plan.
+4. **Implement:** Apply complete, production-grade changes directly to disk.
+5. **Test:** Run automated verification and regression tests.
+6. **Review:** Adversarially review the actual diff and test evidence.
+7. **Deliver:** Provide a concrete delivery report with verified repository state.
 
-```bash
-agy plugin validate --strict .
-agy plugin install .
-agy plugin list --json
-agy agents
-```
+## Safety and Human Approval Boundaries
 
-For workspace discovery, install or copy the plugin into the target workspace's `.agents/plugins/architecture-engineering/` directory, then confirm its agents, skills, rules, and hooks are visible in Antigravity's Customizations / Installed view.
-
-Start the primary agent:
-
-```bash
-agy --agent architecture-orchestrator
-```
-
-Or invoke the discovery skill:
-
-```text
-/improve-codebase-architecture
-```
-
-Check the current Antigravity CLI and IDE documentation for any version-specific installation or validation changes.
-
-## Engineering workflow
-
-For an engineering task, the orchestrator must:
-
-1. Discover and verify relevant execution paths.
-2. Produce an architecture proposal and implementation plan.
-3. Present exact scope, files, risks, compatibility concerns, and verification strategy.
-4. Wait for explicit user approval of that plan.
-5. Delegate implementation only after approval.
-6. Require independent review of actual changes.
-7. Report test evidence, limitations, and unresolved risks.
-
-Assessment and review default to read-only. A request to fix something is not approval for a broad or unspecified refactor.
-
-## Safety model
-
-- Discovery and review agents are read-only by tool allowlist.
-- Implementation is blocked until the user approves a specific plan.
-- Mutating tool calls and shell commands trigger a conservative approval prompt.
-- The hook intentionally prompts for every matched shell command and potentially mutating or external tool call. This favors safety over convenience.
-- Git commit, push, merge, reset, stash, clean, branch deletion, database writes, migrations, deployment, and destructive operations require separate explicit authorization.
-- A development branch is isolation, not permission to skip review or backups.
-- Never claim a build, test, runtime behavior, or security property was verified unless there is direct evidence.
-
-The hook is an additional guard, not a security boundary. Users must still review tool permissions and Antigravity's execution mode.
-
-## Project profiles
-
-The plugin core is project-neutral. A consuming repository may maintain its own profile describing verified technology stacks, protected paths, build commands, runtime topology, data ownership, and architectural invariants.
-
-Copy `templates/PROJECT_PROFILE.template.md` to the target repository at `.architecture/PROJECT_PROFILE.md` only after read-only discovery and user approval. Fill it with verified facts and mark unknowns explicitly.
-
-If no profile exists, run discovery first. Do not invent missing project facts or reuse another project's assumptions.
-
-## Third-party components
-
-The `improve-codebase-architecture` skill is adapted from Matt Pocock's MIT-licensed skill. The adaptation removes automatic GitHub issue creation and writes, replaces unavailable agent-tool references with Antigravity delegation, and adds evidence and approval policies. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attribution and license text.
+- The plugin executes authorized implementation tasks without redundant confirmation prompts.
+- Explicit human approval remains mandatory for destructive Git commands (`push`, `reset`, `clean`), production database migrations, and deployments.
+- When subagent delegation is unavailable in the host environment, the orchestrator executes the lifecycle stages sequentially without halting.

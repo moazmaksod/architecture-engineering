@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#0D1117"/>
+  <rect x="1" y="1" width="126" height="126" rx="27" stroke="#30363D" stroke-width="2"/>
+  <!-- Foundation layer: architectural base grid -->
+  <path d="M28 88L64 106L100 88L64 70L28 88Z" fill="#161B22" stroke="#58A6FF" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Intermediate tier: decoupled abstractions -->
+  <path d="M28 64L64 82L100 64L64 46L28 64Z" fill="#1F2937" fill-opacity="0.6" stroke="#38BDF8" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Upper tier: cohesive interface boundary -->
+  <path d="M28 40L64 58L100 40L64 22L28 40Z" fill="#2563EB" fill-opacity="0.3" stroke="#60A5FA" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Structural pillars: architecture alignment -->
+  <path d="M28 40V88M64 58V106M100 40V88" stroke="#38BDF8" stroke-width="2" stroke-dasharray="3 3"/>
+  <!-- Verification nodes -->
+  <circle cx="64" cy="40" r="4" fill="#38BDF8"/>
+  <circle cx="64" cy="22" r="3" fill="#60A5FA"/>
+  <circle cx="28" cy="40" r="3" fill="#60A5FA"/>
+  <circle cx="100" cy="40" r="3" fill="#60A5FA"/>
+  <circle cx="64" cy="58" r="3" fill="#38BDF8"/>
+  <circle cx="64" cy="106" r="3.5" fill="#58A6FF"/>
+</svg>
+
