@@ -1,13 +1,37 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, statSync, lstatSync, copyFileSync, renameSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  lstatSync,
+  copyFileSync,
+  renameSync
+} from "node:fs";
 import { resolve, join, basename, relative, normalize } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { gunzipSync } from "node:zlib";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
 export const DEFAULT_REPO = "moazmaksod/architecture-engineering";
+
+/**
+ * Maximum bounds to prevent archive bombs and resource exhaustion
+ */
+export const ARCHIVE_LIMITS = {
+  MAX_TOTAL_UNCOMPRESSED_BYTES: 100 * 1024 * 1024, // 100 MB max total extraction size
+  MAX_SINGLE_FILE_BYTES: 25 * 1024 * 1024,        // 25 MB max single file size
+  MAX_TOTAL_ENTRIES: 5000                         // 5000 max files/directories in archive
+};
+
+/**
+ * Canonical list of required components for a valid plugin installation
+ */
 export const REQUIRED_COMPONENTS = [
   "plugin.json",
   "hooks.json",
@@ -17,7 +41,12 @@ export const REQUIRED_COMPONENTS = [
   "agents/architecture-implementation-agent.md",
   "agents/architecture-review-agent.md",
   "skills/architecture-engineering-workflow/SKILL.md",
-  "skills/architecture-review/SKILL.md"
+  "skills/architecture-review/SKILL.md",
+  "skills/high-performance-backend-architecture/SKILL.md",
+  "skills/improve-codebase-architecture/SKILL.md",
+  "skills/architecture-update/SKILL.md",
+  "scripts/approval-gate.mjs",
+  "scripts/updater.mjs"
 ];
 
 /**
@@ -103,31 +132,52 @@ export function getLinkInfo(targetPath) {
 }
 
 /**
- * Fetch latest release from GitHub API
+ * Fetch latest STABLE release from GitHub API
+ * Rejects drafts, prereleases, and unversioned tags
  */
 export async function fetchLatestRelease(repo = DEFAULT_REPO, fetchFn = fetch) {
   const url = `https://api.github.com/repos/${repo}/releases`;
-  const res = await fetchFn(url, {
-    headers: {
-      "User-Agent": "Architecture-Engineering-Updater",
-      Accept: "application/vnd.github.v3+json"
-    }
-  });
+  let res;
+  try {
+    res = await fetchFn(url, {
+      headers: {
+        "User-Agent": "Architecture-Engineering-Updater",
+        Accept: "application/vnd.github.v3+json"
+      }
+    });
+  } catch (err) {
+    throw new Error(`Network failure connecting to GitHub API: ${err.message}`);
+  }
 
   if (!res.ok) {
     throw new Error(`GitHub API error (${res.status}): ${res.statusText}`);
   }
 
-  const releases = await res.json();
+  let releases;
+  try {
+    releases = await res.json();
+  } catch (err) {
+    throw new Error(`Invalid JSON response from GitHub API: ${err.message}`);
+  }
+
   if (!Array.isArray(releases) || releases.length === 0) {
     return null;
   }
 
-  // Filter stable releases (not draft, not prerelease unless no other)
-  const stableReleases = releases.filter(r => !r.draft && !r.prerelease);
-  const candidate = stableReleases.length > 0 ? stableReleases[0] : releases.find(r => !r.draft);
+  // Filter ONLY stable releases: not draft, not prerelease, must have valid semver tag
+  const stableReleases = releases.filter(r => {
+    if (r.draft || r.prerelease) return false;
+    const sem = parseSemver(r.tag_name);
+    return sem !== null && !sem.prerelease;
+  });
 
-  if (!candidate) return null;
+  if (stableReleases.length === 0) {
+    return null;
+  }
+
+  // Sort descending by semver to pick highest stable release
+  stableReleases.sort((a, b) => compareSemver(b.tag_name, a.tag_name));
+  const candidate = stableReleases[0];
 
   return {
     tagName: candidate.tag_name,
@@ -142,58 +192,201 @@ export async function fetchLatestRelease(repo = DEFAULT_REPO, fetchFn = fetch) {
 }
 
 /**
- * Validate archive members before extraction to prevent zip slip or malicious paths
+ * Native in-memory TAR reader and parser (Zero external dependencies).
+ * Enforces strict entry validation, PAX/GNU long filename support,
+ * and rejects malicious entry types (symlinks, hardlinks, character devices, fifos).
  */
-export function validateArchiveListing(tarFilePath) {
-  let listingOutput;
-  try {
-    listingOutput = execFileSync("tar.exe", ["-tzf", tarFilePath], {
-      encoding: "utf-8",
-      windowsHide: true
-    });
-  } catch (err) {
-    throw new Error(`Failed to inspect archive (corrupt or invalid tar.gz): ${err.message}`);
-  }
+export function parseTarBuffer(tarBuffer) {
+  let offset = 0;
+  const entries = [];
+  let nextLongName = null;
+  let totalUncompressedBytes = 0;
 
-  const lines = listingOutput.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length === 0) {
-    throw new Error("Archive is empty");
-  }
+  while (offset + 512 <= tarBuffer.length) {
+    const header = tarBuffer.subarray(offset, offset + 512);
 
-  for (const entry of lines) {
-    // Check for directory traversal sequences
-    if (entry.includes("..") || entry.startsWith("/") || entry.startsWith("\\") || /^[A-Za-z]:/.test(entry)) {
-      throw new Error(`Security violation: Archive contains unsafe path traversal entry: ${entry}`);
+    // 512 zero bytes indicates EOF or end of archive
+    let isZero = true;
+    for (let i = 0; i < 512; i++) {
+      if (header[i] !== 0) {
+        isZero = false;
+        break;
+      }
     }
+    if (isZero) break;
+
+    // Standard ustar header parsing
+    let name = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
+    const prefix = header.subarray(345, 500).toString("utf8").replace(/\0.*$/, "");
+    if (prefix) {
+      name = `${prefix}/${name}`;
+    }
+
+    const sizeOctal = header.subarray(124, 136).toString("utf8").replace(/\0.*$/, "").trim();
+    const size = parseInt(sizeOctal, 8) || 0;
+    const typeflag = String.fromCharCode(header[156]);
+
+    const dataStart = offset + 512;
+    const dataEnd = dataStart + size;
+
+    if (dataEnd > tarBuffer.length) {
+      throw new Error(`Corrupt tar archive: entry '${name}' data overflows archive bounds`);
+    }
+
+    if (typeflag === "L") {
+      // GNU Long Filename extension
+      nextLongName = tarBuffer.subarray(dataStart, dataEnd).toString("utf8").replace(/\0.*$/, "").trim();
+    } else if (typeflag === "x" || typeflag === "g") {
+      // PAX Extended Header
+      // Skip metadata entry
+    } else {
+      const entryName = nextLongName || name;
+      nextLongName = null;
+
+      // Validate entry type
+      // Allowed: '0' / '' (regular file), '5' (directory)
+      // Disallowed: '1' (hard link), '2' (symlink), '3' (char device), '4' (block device), '6' (fifo)
+      if (typeflag !== "0" && typeflag !== "\0" && typeflag !== "5") {
+        throw new Error(
+          `Security violation: Unsupported or hazardous archive entry type '${typeflag}' for entry '${entryName}' (links and devices are strictly forbidden)`
+        );
+      }
+
+      totalUncompressedBytes += size;
+      if (totalUncompressedBytes > ARCHIVE_LIMITS.MAX_TOTAL_UNCOMPRESSED_BYTES) {
+        throw new Error(
+          `Security violation: Archive uncompressed size exceeds safety limit of ${ARCHIVE_LIMITS.MAX_TOTAL_UNCOMPRESSED_BYTES} bytes (archive bomb protection)`
+        );
+      }
+      if (size > ARCHIVE_LIMITS.MAX_SINGLE_FILE_BYTES) {
+        throw new Error(
+          `Security violation: Entry '${entryName}' size (${size} bytes) exceeds maximum file limit of ${ARCHIVE_LIMITS.MAX_SINGLE_FILE_BYTES} bytes`
+        );
+      }
+
+      entries.push({
+        name: entryName,
+        size,
+        typeflag: typeflag === "5" ? "5" : "0",
+        data: typeflag === "5" ? null : tarBuffer.subarray(dataStart, dataEnd)
+      });
+
+      if (entries.length > ARCHIVE_LIMITS.MAX_TOTAL_ENTRIES) {
+        throw new Error(
+          `Security violation: Archive entry count exceeds safety limit of ${ARCHIVE_LIMITS.MAX_TOTAL_ENTRIES} entries`
+        );
+      }
+    }
+
+    offset += 512 + Math.ceil(size / 512) * 512;
   }
 
-  return lines;
+  return entries;
 }
 
 /**
- * Safely unpack tar.gz into target directory
+ * Validate that an archive entry name resolves strictly within destDir
  */
-export function unpackArchiveSafely(tarFilePath, destDir) {
-  validateArchiveListing(tarFilePath);
+export function isContainedPath(destDir, entryName) {
+  const normalized = entryName.replace(/\\/g, "/");
 
-  if (!existsSync(destDir)) {
-    mkdirSync(destDir, { recursive: true });
+  // String check for path traversal patterns
+  if (
+    normalized.includes("../") ||
+    normalized.includes("/..") ||
+    normalized === ".." ||
+    normalized.startsWith("/") ||
+    /^[a-zA-Z]:/.test(normalized)
+  ) {
+    return false;
   }
 
+  // Filesystem resolution check
+  const resolvedDest = resolve(destDir);
+  const resolvedTarget = resolve(resolvedDest, normalized);
+  const rel = relative(resolvedDest, resolvedTarget);
+
+  if (rel.startsWith("..") || resolve(rel) === rel) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Safely unpack tar.gz into target directory with defense-in-depth:
+ * 1. Native in-memory gunzip & tar parsing
+ * 2. Rejection of symlinks, hardlinks, character devices, and fifo entries
+ * 3. Exact containment checking against destDir
+ * 4. Protection against duplicate entry collisions and archive bombs
+ */
+export function unpackArchiveSafely(tarGzPath, destDir) {
+  if (!existsSync(tarGzPath)) {
+    throw new Error(`Archive file not found: ${tarGzPath}`);
+  }
+
+  const compressedData = readFileSync(tarGzPath);
+  let tarBuffer;
   try {
-    execFileSync("tar.exe", ["-xzf", tarFilePath, "-C", destDir], {
-      windowsHide: true
-    });
+    tarBuffer = gunzipSync(compressedData);
   } catch (err) {
-    throw new Error(`Failed to unpack archive: ${err.message}`);
+    throw new Error(`Failed to decompress archive (invalid gzip): ${err.message}`);
   }
 
-  // Handle case where GitHub tarballs nest files under repo-tag directory
+  const entries = parseTarBuffer(tarBuffer);
+  if (entries.length === 0) {
+    throw new Error("Archive is empty");
+  }
+
+  const seenPaths = new Set();
+
+  for (const entry of entries) {
+    let cleanName = entry.name.replace(/\\/g, "/").trim();
+    if (cleanName.startsWith("./")) {
+      cleanName = cleanName.slice(2);
+    }
+    if (!cleanName || cleanName === ".") continue;
+
+    if (!isContainedPath(destDir, cleanName)) {
+      throw new Error(`Security violation: Archive contains unsafe path traversal entry: ${entry.name}`);
+    }
+
+    // Check duplicate entries targeting identical files
+    const normalizedKey = cleanName.toLowerCase();
+    if (seenPaths.has(normalizedKey) && entry.typeflag === "0") {
+      throw new Error(`Security violation: Duplicate archive entry detected: ${cleanName}`);
+    }
+    seenPaths.add(normalizedKey);
+  }
+
+  // Safe extraction phase
+  mkdirSync(destDir, { recursive: true });
+
+  for (const entry of entries) {
+    let cleanName = entry.name.replace(/\\/g, "/").trim();
+    if (cleanName.startsWith("./")) {
+      cleanName = cleanName.slice(2);
+    }
+    if (!cleanName || cleanName === ".") continue;
+
+    const outPath = resolve(destDir, cleanName);
+
+    if (entry.typeflag === "5") {
+      mkdirSync(outPath, { recursive: true });
+    } else {
+      const parentDir = resolve(outPath, "..");
+      if (!existsSync(parentDir)) {
+        mkdirSync(parentDir, { recursive: true });
+      }
+      writeFileSync(outPath, entry.data);
+    }
+  }
+
+  // Handle case where GitHub tarballs nest files under repo-tag root directory
   const extractedItems = readdirSync(destDir);
   if (extractedItems.length === 1) {
     const singleChild = join(destDir, extractedItems[0]);
     if (statSync(singleChild).isDirectory() && existsSync(join(singleChild, "plugin.json"))) {
-      // Flatten directory
       const childFiles = readdirSync(singleChild);
       for (const item of childFiles) {
         renameSync(join(singleChild, item), join(destDir, item));
@@ -226,6 +419,13 @@ export function validatePluginStructure(dirPath) {
     };
   }
 
+  if (!manifest.version || !parseSemver(manifest.version)) {
+    return {
+      valid: false,
+      reason: `plugin.json version '${manifest.version}' is invalid or missing`
+    };
+  }
+
   for (const relPath of REQUIRED_COMPONENTS) {
     const fullPath = join(dirPath, relPath);
     if (!existsSync(fullPath)) {
@@ -234,6 +434,89 @@ export function validatePluginStructure(dirPath) {
   }
 
   return { valid: true, manifest };
+}
+
+/**
+ * Parse sha256 checksum file contents
+ */
+export function parseChecksumFile(text) {
+  const map = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^([a-fA-F0-9]{64})\s+[*]?([^\r\n]+)$/);
+    if (match) {
+      map.set(match[2].trim(), match[1].toLowerCase());
+    }
+  }
+  return map;
+}
+
+/**
+ * Calculate SHA-256 hash of a buffer
+ */
+export function computeSha256(buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+/**
+ * Verify artifact integrity against release assets
+ */
+export async function verifyArtifactIntegrity(archiveBuffer, archiveFileName, releaseAssets, fetchFn = fetch) {
+  const computedHash = computeSha256(archiveBuffer);
+
+  // Look for checksum file in release assets
+  const checksumAsset = releaseAssets.find(a =>
+    /checksums?\.txt|sha256sums?\.txt/i.test(a.name)
+  );
+
+  if (!checksumAsset) {
+    // If repository has not published checksums, document verified integrity limitation
+    return {
+      verified: false,
+      hasChecksumFile: false,
+      computedHash,
+      message: "No checksums.txt published in release assets. Integrity verified via TLS stream and strict structural validation only."
+    };
+  }
+
+  const res = await fetchFn(checksumAsset.browser_download_url || checksumAsset.url, {
+    headers: { "User-Agent": "Architecture-Engineering-Updater" }
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch release checksum file (${res.status}): ${res.statusText}`);
+  }
+
+  const checksumText = await res.text();
+  const checksumMap = parseChecksumFile(checksumText);
+
+  if (checksumMap.size === 0) {
+    throw new Error("Release checksum file is malformed or empty");
+  }
+
+  // Look up by archive filename or base name
+  const expectedHash =
+    checksumMap.get(archiveFileName) ||
+    checksumMap.get(basename(archiveFileName)) ||
+    (checksumMap.size === 1 ? Array.from(checksumMap.values())[0] : null);
+
+  if (!expectedHash) {
+    throw new Error(`Checksum for artifact '${archiveFileName}' not found in release checksums`);
+  }
+
+  if (computedHash.toLowerCase() !== expectedHash.toLowerCase()) {
+    throw new Error(
+      `Security violation: Checksum mismatch! Expected ${expectedHash}, computed ${computedHash}`
+    );
+  }
+
+  return {
+    verified: true,
+    hasChecksumFile: true,
+    computedHash,
+    expectedHash,
+    message: "Cryptographic SHA-256 checksum verified successfully."
+  };
 }
 
 /**
@@ -300,7 +583,6 @@ export function rollbackInstallation(pluginDir, backupPath) {
     throw new Error(`Backup at ${backup} is invalid: ${validation.reason}`);
   }
 
-  // Remove existing and restore
   if (existsSync(pluginDir)) {
     rmSync(pluginDir, { recursive: true, force: true });
   }
@@ -346,12 +628,23 @@ export async function checkUpdate(options = {}) {
       pluginDir,
       installedVersion,
       isLink: linkInfo.isLink,
-      message: `No public releases found for ${repo}. Plugin is up to date with installed version ${installedVersion}.`
+      message: `No eligible stable releases found for ${repo}. Plugin is up to date with installed version ${installedVersion}.`
     };
   }
 
   const cmp = compareSemver(release.version, installedVersion);
-  if (cmp <= 0) {
+  if (cmp < 0) {
+    // Release version is older than installed version -> Prevent downgrade
+    return {
+      status: "up_to_date",
+      pluginDir,
+      installedVersion,
+      availableVersion: release.version,
+      isLink: linkInfo.isLink,
+      message: `Installed version (v${installedVersion}) is newer than latest stable release (v${release.version}). Downgrade prevented.`
+    };
+  }
+  if (cmp === 0) {
     return {
       status: "up_to_date",
       pluginDir,
@@ -373,7 +666,7 @@ export async function checkUpdate(options = {}) {
 }
 
 /**
- * Apply update with full safety lifecycle
+ * Apply update with full safety and atomic-like staging lifecycle
  */
 export async function applyUpdate(options = {}) {
   const pluginDir = options.target || getDefaultInstalledPluginPath();
@@ -385,7 +678,7 @@ export async function applyUpdate(options = {}) {
     if (!options.allowWorkspaceOverride) {
       throw new Error(
         `Safety block: Target path (${pluginDir}) matches the development workspace. ` +
-        `The update mechanism targets the installed plugin copy, not your active source code checkout.`
+        `The update mechanism targets the installed plugin copy, not your active source checkout.`
       );
     }
   }
@@ -406,26 +699,32 @@ export async function applyUpdate(options = {}) {
     );
   }
 
-  // User approval check
+  // Explicit approval check
   if (!options.autoApprove) {
     if (options.interactive) {
       const rl = createInterface({ input: stdin, output: stdout });
-      const answer = await rl.question(
-        `Update available: v${check.installedVersion} -> v${check.availableVersion}.\n` +
-        `Target: ${pluginDir}\n` +
-        `Release Notes:\n${check.release?.body || "N/A"}\n\n` +
-        `Proceed with installation? (y/N): `
-      );
-      rl.close();
-      if (!/^y(es)?$/i.test(answer.trim())) {
-        return { success: false, aborted: true, message: "Update aborted by user." };
+      try {
+        const answer = await rl.question(
+          `Update available: v${check.installedVersion} -> v${check.availableVersion}.\n` +
+          `Target: ${pluginDir}\n` +
+          `Release Notes:\n${check.release?.body || "N/A"}\n\n` +
+          `Proceed with installation? (y/N): `
+        );
+        if (!/^y(es)?$/i.test(answer.trim())) {
+          return { success: false, aborted: true, message: "Update aborted by user." };
+        }
+      } catch (promptErr) {
+        // EOF or stdin close
+        return { success: false, aborted: true, message: "Update aborted: input stream closed without confirmation." };
+      } finally {
+        rl.close();
       }
     } else {
       throw new Error("Explicit user approval required. Run with --yes or interactive mode.");
     }
   }
 
-  // Download or use local archive
+  // Temporary staging directory
   const tempDir = join(tmpdir(), `agy-update-${Date.now()}`);
   mkdirSync(tempDir, { recursive: true });
 
@@ -447,11 +746,20 @@ export async function applyUpdate(options = {}) {
         throw new Error(`Failed to download release archive (${res.status}): ${res.statusText}`);
       }
       const buffer = Buffer.from(await res.arrayBuffer());
+
+      // Integrity verification
+      const integrity = await verifyArtifactIntegrity(
+        buffer,
+        `architecture-engineering-${check.release.version}.tar.gz`,
+        check.release.assets,
+        fetchFn
+      );
+
       tarballPath = join(tempDir, "release.tar.gz");
       writeFileSync(tarballPath, buffer);
     }
 
-    // 1. Unpack into staging directory and inspect
+    // 1. Unpack into staging directory and inspect with defense-in-depth parser
     unpackArchiveSafely(tarballPath, stagingDir);
 
     // 2. Validate staged files BEFORE modifying installed plugin
@@ -463,8 +771,7 @@ export async function applyUpdate(options = {}) {
     // 3. Backup existing installation
     backupDir = backupInstallation(pluginDir);
 
-    // 4. Install files
-    // If physical directory exists, replace contents safely
+    // 4. Safe installation swap
     if (existsSync(pluginDir)) {
       rmSync(pluginDir, { recursive: true, force: true });
     }
@@ -485,7 +792,7 @@ export async function applyUpdate(options = {}) {
       pluginDir
     };
   } catch (err) {
-    // Attempt rollback if backup exists and failure occurred after backup
+    // Auto-rollback if failure occurred after backup was created
     if (backupDir && existsSync(backupDir)) {
       try {
         rollbackInstallation(pluginDir, backupDir);
@@ -505,7 +812,7 @@ export async function applyUpdate(options = {}) {
     }
     throw err;
   } finally {
-    // Cleanup temp files
+    // Cleanup temporary files
     try {
       rmSync(tempDir, { recursive: true, force: true });
     } catch {
@@ -611,4 +918,3 @@ async function main() {
 if (process.argv[1] && normalize(process.argv[1]) === normalize(import.meta.filename)) {
   main();
 }
-
