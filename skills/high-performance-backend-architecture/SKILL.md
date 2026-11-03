@@ -19,7 +19,7 @@ Before implementation:
 5. Evaluate correctness, failure behavior, security, performance, compatibility, operability, and rollback.
 6. Compare viable designs and explain trade-offs.
 7. Define acceptance criteria and verification before coding.
-8. In Planning Mode or for breaking architectural changes, obtain explicit user approval. In Execution Mode, proceed autonomously to implementation once acceptance criteria are defined.
+8. Present findings, proposed implementation plan, affected files, risks, and validation steps. Obtain explicit user approval before modifying project files. Once approved, implement and verify autonomously within the approved scope.
 
 Never begin implementation without clear acceptance criteria and verification.
 

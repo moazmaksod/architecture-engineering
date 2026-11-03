@@ -11,10 +11,12 @@ An execution-first Antigravity plugin for evidence-based architecture discovery,
 The **Architecture Engineering** plugin guides software engineering tasks through the complete lifecycle: requirements analysis, architecture discovery, implementation, testing, review, and verified delivery. It eliminates analysis paralysis by enforcing autonomous decision-making for routine engineering choices while maintaining rigorous safety boundaries.
 
 ### Core Principles
-- **Execution-First:** Default to shipping working code, verified with automated tests, rather than halting after discovery or emitting code blocks in chat.
+- **Autonomous Read, Human-Controlled Writes:** Clear separation between autonomous discovery permissions and human-authorized write permissions.
+- **Execution-First:** Once the bounded plan is approved, proceed autonomously through implementation, testing, and independent review to deliver working, verified software rather than halting or emitting markdown diffs.
 - **Business Logic Integrity:** The plugin manages architecture, structure, and testing. It **never alters or guesses business domain rules**; ambiguous business requirements prompt human escalation.
 - **Evidence Before Conclusions:** System boundaries and dependencies are confirmed from actual source code and runtime evidence before refactoring.
 - **Fail-Closed Safety:** Destructive actions (Git resets/pushes, mass file deletions, disk formatting, production migrations, and deployments) require mandatory human approval.
+- **Opt-In Discipline:** The plugin is strictly opt-in and does not automatically activate or intercept ordinary development sessions unless explicitly invoked.
 
 ---
 
@@ -121,27 +123,61 @@ For diagnosing and fixing defects with minimal reproductions and regression test
 
 ---
 
-## The 7-Stage Execution Lifecycle
+## Permission Model — Autonomous Read, Human-Controlled Writes
 
-When operating in Execution Mode, the orchestrator follows a disciplined 7-stage lifecycle:
+Architecture Engineering enforces a strict separation between discovery permissions and modification permissions:
+
+### 1. Autonomous Read & Discovery
+Within the authorized project workspace, the agent autonomously reads code, searches repositories, traces dependencies and call chains, inspects configurations, identifies risks, runs safe diagnostic tests, and prepares complete implementation plans. **Routine read-only discovery never prompts for individual permissions.**
+
+### 2. Human Approval Before Implementation
+Before project files are modified:
+1. Present the findings.
+2. Present the proposed implementation plan.
+3. Identify affected files and expected changes.
+4. Explain relevant risks and validation steps.
+5. Wait for explicit user approval.
+
+Approval applies specifically to the presented plan and scope. If implementation requires materially different changes, additional approval is sought.
+
+### 3. Explicit Approval for Dangerous Operations
+Always obtain separate, explicit human approval before:
+- Deleting or overwriting important files.
+- Destructive database operations or data migrations.
+- Destructive Git operations (`reset`, `clean`, `push`, `branch -D`, `checkout -f`).
+- Altering security settings, credentials (`.env*`), or external services.
+- Publishing packages, deploying to infrastructure, or transmitting project data externally.
+- Running commands with potentially irreversible side effects.
+
+### 4. Anti-Permission-Spam Policy
+- Never ask for approval for every file read, search, inspection, or safe test.
+- Once the plan is approved, proceed autonomously through implementation, testing, and independent review without repeated confirmation requests.
+- Use the host's existing permission and safety mechanisms without attempting bypass.
+
+---
+
+## Execution Lifecycle
+
+When operating in Execution Mode, the orchestrator follows a disciplined lifecycle with an explicit human approval gate before file modification:
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ 1.Understand│ ──► │  2. Decide  │ ──► │   3. Plan   │ ──► │4. Implement │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-                                                                   │
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐            ▼
-│ 7. Deliver  │ ◄── │  6. Review  │ ◄── │   5. Test   │ ◄──────────┘
-└─────────────┘     └─────────────┘     └─────────────┘
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ╔══════════════╗     ┌──────────────┐
+│ 1.Understand │ ──► │  2. Decide   │ ──► │   3. Plan    │ ──► ║ HumanApproval║ ──► │ 5. Implement │
+└──────────────┘     └──────────────┘     └──────────────┘     ╚══════════════╝     └──────────────┘
+                                                                                            │
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐                                  ▼
+│  8. Deliver  │ ◄── │  7. Review   │ ◄── │   6. Test    │ ◄────────────────────────────────┘
+└──────────────┘     └──────────────┘     └──────────────┘
 ```
 
-1. **Understand:** Map relevant code, dependencies, and constraints. Do not ask users for information discoverable in the repository.
+1. **Understand (Autonomous Read):** Map relevant code, dependencies, and constraints autonomously.
 2. **Decide:** Resolve routine engineering choices autonomously (naming, signatures, test placement) following existing codebase conventions.
-3. **Plan:** Formulate a concise, bounded plan identifying files to modify and acceptance criteria.
-4. **Implement:** Apply production-ready changes directly to disk (delegating to `architecture-implementation-agent` or applying sequentially).
-5. **Test:** Execute automated unit and integration tests. Regressions are fixed immediately.
-6. **Review:** Inspect diffs independently (delegating to `architecture-review-agent`). Only critical defects (crashes, security holes, data loss) block delivery.
-7. **Deliver:** Emit a concise report containing modified files, test outputs, and verified repository status.
+3. **Plan:** Formulate a concise, bounded plan identifying files to modify, expected changes, acceptance criteria, risks, and validation strategy.
+4. **Human Approval Gate:** Present findings and plan. Wait for explicit human approval before modifying files.
+5. **Implement (Autonomous Execution):** Apply production-ready changes directly to disk (delegating to `architecture-implementation-agent` or applying sequentially). Execute approved changes autonomously without repeated confirmation requests.
+6. **Test:** Execute automated unit and integration tests autonomously. Regressions are fixed immediately.
+7. **Review:** Inspect diffs independently (delegating to `architecture-review-agent`). Only critical defects (crashes, security holes, data loss) block delivery.
+8. **Deliver:** Emit a concise report containing modified files, test outputs, and verified repository status.
 
 ---
 
