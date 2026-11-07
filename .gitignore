@@ -39,7 +39,8 @@ test-results/
 *.sublime-project
 *.sublime-workspace
 .antigravity/cache/
-.architecture/
+.architecture/tmp/
+.architecture/cache/
 
 # Logs and runtime dumps
 *.log

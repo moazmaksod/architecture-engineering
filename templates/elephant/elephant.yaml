@@ -1,0 +1,30 @@
+schema_version: "2.1.0"
+project_name: "project-name"
+repository: "organization/repository"
+canonical_root: ".architecture/elephant"
+categories:
+  facts:
+    path: "facts"
+    governance: "autonomous"
+    requires_provenance: true
+  decisions:
+    path: "decisions"
+    governance: "human_approved"
+    requires_approval_token: true
+  constraints:
+    path: "constraints"
+    governance: "human_approved"
+    requires_approval_token: true
+  assumptions:
+    path: "assumptions"
+    governance: "autonomous"
+    requires_provenance: false
+  proposals:
+    path: "proposals"
+    governance: "draft"
+    requires_provenance: false
+  known_issues:
+    path: "known-issues"
+    governance: "autonomous"
+    requires_provenance: true
+
