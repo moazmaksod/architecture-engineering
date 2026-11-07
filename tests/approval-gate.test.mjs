@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
+import { issueApprovalToken } from "../scripts/approval-token.mjs";
 
-function runApprovalGate(input) {
+function runApprovalGate(input, env = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, [resolve("scripts/approval-gate.mjs")], {
       stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, ARCH_APPROVAL_SECRET: "test-gate-secret", ...env },
     });
 
     let stdout = "";
@@ -38,13 +40,31 @@ function runApprovalGate(input) {
 }
 
 test("Approval Gate Guard Unit Tests", async (t) => {
-  // Routine actions permitted in execution mode
-  await t.test("allows routine file edit", async () => {
+  // Fail-closed enforcement on unauthenticated edits vs allowed on authorized token
+  await t.test("fails closed on unauthenticated file edit", async () => {
     const result = await runApprovalGate(JSON.stringify({
       toolCall: {
         name: "edit_file",
         args: { Path: "src/calculator.js" }
       }
+    }));
+    assert.equal(result.decision, "force_ask");
+    assert.match(result.reason, /lifecycle violation/i);
+  });
+
+  await t.test("allows authorized file edit with valid token in IMPLEMENTATION state", async () => {
+    const token = issueApprovalToken(
+      { taskId: "T1", proposalId: "P1", approvedScope: { paths: ["src/*"] } },
+      "test-gate-secret"
+    );
+    const result = await runApprovalGate(JSON.stringify({
+      toolCall: {
+        name: "edit_file",
+        args: { Path: "src/calculator.js" }
+      },
+      lifecycleState: "IMPLEMENTATION",
+      authorization: token,
+      allowReplay: true,
     }));
     assert.equal(result.decision, "allow");
   });
@@ -360,12 +380,19 @@ test("Approval Gate Guard Unit Tests", async (t) => {
     assert.match(res.reason, /modifying environment credentials file/i);
   });
 
-  await t.test("allows routine file modification via Cortex tools (replace_file_content, write_to_file)", async () => {
+  await t.test("allows authorized file modification via Cortex tools in IMPLEMENTATION state", async () => {
+    const token = issueApprovalToken(
+      { taskId: "T1", proposalId: "P1", approvedScope: { paths: ["src/*"] } },
+      "test-gate-secret"
+    );
     const res1 = await runApprovalGate(JSON.stringify({
       toolCall: {
         name: "replace_file_content",
         args: { TargetFile: "src/utils.js", ReplacementContent: "new content" }
-      }
+      },
+      lifecycleState: "IMPLEMENTATION",
+      authorization: token,
+      allowReplay: true,
     }));
     assert.equal(res1.decision, "allow");
 
@@ -373,17 +400,27 @@ test("Approval Gate Guard Unit Tests", async (t) => {
       toolCall: {
         name: "write_to_file",
         args: { TargetFile: "src/new_file.js", CodeContent: "export const x = 1;" }
-      }
+      },
+      lifecycleState: "IMPLEMENTATION",
+      authorization: token,
+      allowReplay: true,
     }));
     assert.equal(res2.decision, "allow");
   });
 
-  await t.test("allows routine file_change step type", async () => {
+  await t.test("allows authorized file_change step type in IMPLEMENTATION state", async () => {
+    const token = issueApprovalToken(
+      { taskId: "T1", proposalId: "P1", approvedScope: { paths: ["src/*"] } },
+      "test-gate-secret"
+    );
     const res = await runApprovalGate(JSON.stringify({
       toolCall: {
         name: "file_change",
         args: { Path: "src/service.js" }
-      }
+      },
+      lifecycleState: "IMPLEMENTATION",
+      authorization: token,
+      allowReplay: true,
     }));
     assert.equal(res.decision, "allow");
   });
